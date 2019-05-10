@@ -82,7 +82,18 @@ namespace DNS.Server {
                     OnError(e);
                 }
 
-                if (run) udp.BeginReceive(receiveCallback, null);
+                if (run)
+                {
+                    try
+                    {
+                        udp.BeginReceive(receiveCallback, null);
+                    }
+                    catch (Exception e)
+                    {
+                        OnError(e);
+                        tcs.SetResult(null);
+                    }
+                }
                 else tcs.SetResult(null);
             };
 
