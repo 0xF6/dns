@@ -11,6 +11,8 @@ using DNS.Client;
 using DNS.Client.RequestResolver;
 
 namespace DNS.Server {
+    using System.Runtime.InteropServices;
+
     public class DnsServer : IDisposable {
         private const int DEFAULT_PORT = 53;
         private const int UDP_TIMEOUT = 2000;
@@ -59,6 +61,18 @@ namespace DNS.Server {
             if (run) {
                 try {
                     udp = new UdpClient(endpoint);
+
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    {
+                        // Configure UdpClient to ignore PORT_UNREACHABLE ICMP messages.
+                        const int SIO_UDP_CONNRESET = unchecked((int)0x9800000C);
+                        var inValue = new byte[] { 0, 0, 0, 0 };
+                        var outValue = new byte[] { 0, 0, 0, 0 };
+
+                        udp.Client.IOControl(SIO_UDP_CONNRESET, inValue, outValue);
+                    }
+
+
                 } catch (SocketException e) {
                     OnError(e);
                     return;
