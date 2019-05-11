@@ -1,19 +1,18 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading.Tasks;
-using System.IO;
-using DNS.Protocol;
-using DNS.Protocol.ResourceRecords;
-using DNS.Protocol.Utils;
-using DNS.Client;
-using DNS.Client.RequestResolver;
-
-namespace DNS.Server {
+﻿namespace DNS.Server
+{
+    using System;
+    using System.Net;
+    using System.Net.Sockets;
+    using System.Threading.Tasks;
+    using System.IO;
+    using Protocol;
+    using Protocol.Utils;
+    using Client;
+    using Client.RequestResolver;
     using System.Runtime.InteropServices;
 
-    public class DnsServer : IDisposable {
+    public class DnsServer : IDisposable
+    {
         private const int DEFAULT_PORT = 53;
         private const int UDP_TIMEOUT = 2000;
 
@@ -25,41 +24,52 @@ namespace DNS.Server {
         private bool run = true;
         private bool disposed = false;
         private UdpClient udp;
-        private IRequestResolver resolver;
+        private readonly IRequestResolver resolver;
 
-        public DnsServer(MasterFile masterFile, IPEndPoint endServer) :
-            this(new FallbackRequestResolver(masterFile, new UdpRequestResolver(endServer))) {}
+        public DnsServer(IRequestResolver masterFile, IPEndPoint endServer) :
+            this(new FallbackRequestResolver(masterFile, new UdpRequestResolver(endServer)))
+        { }
 
-        public DnsServer(MasterFile masterFile, IPAddress endServer, int port = DEFAULT_PORT) :
-            this(masterFile, new IPEndPoint(endServer, port)) {}
+        public DnsServer(IRequestResolver masterFile, IPAddress endServer, int port = DEFAULT_PORT) :
+            this(masterFile, new IPEndPoint(endServer, port))
+        { }
 
-        public DnsServer(MasterFile masterFile, string endServer, int port = DEFAULT_PORT) :
-            this(masterFile, IPAddress.Parse(endServer), port) {}
+        public DnsServer(IRequestResolver masterFile, string endServer, int port = DEFAULT_PORT) :
+            this(masterFile, IPAddress.Parse(endServer), port)
+        { }
 
         public DnsServer(IPEndPoint endServer) :
-            this(new UdpRequestResolver(endServer)) {}
+            this(new UdpRequestResolver(endServer))
+        { }
 
         public DnsServer(IPAddress endServer, int port = DEFAULT_PORT) :
-            this(new IPEndPoint(endServer, port)) {}
+            this(new IPEndPoint(endServer, port))
+        { }
 
         public DnsServer(string endServer, int port = DEFAULT_PORT) :
-            this(IPAddress.Parse(endServer), port) {}
+            this(IPAddress.Parse(endServer), port)
+        { }
 
-        public DnsServer(IRequestResolver resolver) {
+        public DnsServer(IRequestResolver resolver)
+        {
             this.resolver = resolver;
         }
 
-        public Task Listen(int port = DEFAULT_PORT, IPAddress ip = null) {
+        public Task Listen(int port = DEFAULT_PORT, IPAddress ip = null)
+        {
             return Listen(new IPEndPoint(ip ?? IPAddress.Any, port));
         }
 
-        public async Task Listen(IPEndPoint endpoint) {
+        public async Task Listen(IPEndPoint endpoint)
+        {
             await Task.Yield();
 
-            TaskCompletionSource<object> tcs = new TaskCompletionSource<object>();
+            var tcs = new TaskCompletionSource<object>();
 
-            if (run) {
-                try {
+            if (run)
+            {
+                try
+                {
                     udp = new UdpClient(endpoint);
 
                     if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -73,26 +83,29 @@ namespace DNS.Server {
                     }
 
 
-                } catch (SocketException e) {
+                }
+                catch (SocketException e)
+                {
                     OnError(e);
                     return;
                 }
             }
 
-            AsyncCallback receiveCallback = null;
-            receiveCallback = result => {
-                byte[] data;
-
-                try {
-                    IPEndPoint remote = new IPEndPoint(0, 0);
-                    data = udp.EndReceive(result, ref remote);
+            void ReceiveCallback(IAsyncResult result)
+            {
+                try
+                {
+                    var remote = new IPEndPoint(0, 0);
+                    var data = udp.EndReceive(result, ref remote);
                     HandleRequest(data, remote);
                 }
-                catch (ObjectDisposedException) {
+                catch (ObjectDisposedException)
+                {
                     // run should already be false
                     run = false;
                 }
-                catch (SocketException e) {
+                catch (SocketException e)
+                {
                     OnError(e);
                 }
 
@@ -100,7 +113,7 @@ namespace DNS.Server {
                 {
                     try
                     {
-                        udp.BeginReceive(receiveCallback, null);
+                        udp.BeginReceive(ReceiveCallback, null);
                     }
                     catch (Exception e)
                     {
@@ -108,45 +121,45 @@ namespace DNS.Server {
                         tcs.SetResult(null);
                     }
                 }
-                else tcs.SetResult(null);
-            };
+                else
+                    tcs.SetResult(null);
+            }
 
-            udp.BeginReceive(receiveCallback, null);
+            udp.BeginReceive(ReceiveCallback, null);
             OnEvent(Listening, EventArgs.Empty);
             await tcs.Task;
         }
 
-        public void Dispose() {
-            Dispose(true);
-        }
+        public void Dispose() => Dispose(true);
 
-        protected virtual void OnEvent<T>(EventHandler<T> handler, T args) {
-            if (handler != null) handler(this, args);
-        }
+        protected virtual void OnEvent<T>(EventHandler<T> handler, T args) => handler?.Invoke(this, args);
 
-        protected virtual void Dispose(bool disposing) {
-            if (!disposed) {
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposed)
+            {
                 disposed = true;
 
-                if (disposing) {
+                if (disposing)
+                {
                     run = false;
                     udp?.Dispose();
                 }
             }
         }
 
-        private void OnError(Exception e) {
-            OnEvent(Errored, new ErroredEventArgs(e));
-        }
+        private void OnError(Exception e) => OnEvent(Errored, new ErroredEventArgs(e));
 
-        private async void HandleRequest(byte[] data, IPEndPoint remote) {
+        private async void HandleRequest(byte[] data, IPEndPoint remote)
+        {
             Request request = null;
 
-            try {
+            try
+            {
                 request = Request.FromArray(data);
                 OnEvent(Requested, new RequestedEventArgs(request, data, remote));
 
-                IResponse response = await resolver.Resolve(request);
+                var response = await resolver.Resolve(request);
 
                 OnEvent(Responded, new RespondedEventArgs(request, response, data, remote));
                 await udp
@@ -159,100 +172,100 @@ namespace DNS.Server {
             catch (OperationCanceledException e) { OnError(e); }
             catch (IOException e) { OnError(e); }
             catch (ObjectDisposedException e) { OnError(e); }
-            catch (ResponseException e) {
-                IResponse response = e.Response;
+            catch (ResponseException e)
+            {
+                var response = e.Response ?? Response.FromRequest(request);
 
-                if (response == null) {
-                    response = Response.FromRequest(request);
-                }
-
-                try {
+                try
+                {
                     await udp
                         .SendAsync(response.ToArray(), response.Size, remote)
                         .WithCancellationTimeout(UDP_TIMEOUT);
                 }
-                catch (SocketException) {}
-                catch (OperationCanceledException) {}
+                catch (SocketException) { }
+                catch (OperationCanceledException) { }
                 finally { OnError(e); }
             }
         }
 
-        public class RequestedEventArgs : EventArgs {
-            public RequestedEventArgs(IRequest request, byte[] data, IPEndPoint remote) {
+        public class RequestedEventArgs : EventArgs
+        {
+            public RequestedEventArgs(IRequest request, byte[] data, IPEndPoint remote)
+            {
                 Request = request;
                 Data = data;
                 Remote = remote;
             }
 
-            public IRequest Request {
-                get;
-                private set;
-            }
-
-            public byte[] Data {
-                get;
-                private set;
-            }
-
-            public IPEndPoint Remote {
-                get;
-                private set;
-            }
+            public IRequest Request { get; }
+            public byte[] Data { get; }
+            public IPEndPoint Remote { get; }
         }
 
-        public class RespondedEventArgs : EventArgs {
-            public RespondedEventArgs(IRequest request, IResponse response, byte[] data, IPEndPoint remote) {
+        public class RespondedEventArgs : EventArgs
+        {
+            public RespondedEventArgs(IRequest request, IResponse response, byte[] data, IPEndPoint remote)
+            {
                 Request = request;
                 Response = response;
                 Data = data;
                 Remote = remote;
             }
 
-            public IRequest Request {
+            public IRequest Request
+            {
                 get;
                 private set;
             }
 
-            public IResponse Response {
+            public IResponse Response
+            {
                 get;
                 private set;
             }
 
-            public byte[] Data {
+            public byte[] Data
+            {
                 get;
                 private set;
             }
 
-            public IPEndPoint Remote {
+            public IPEndPoint Remote
+            {
                 get;
                 private set;
             }
         }
 
-        public class ErroredEventArgs : EventArgs {
-            public ErroredEventArgs(Exception e) {
+        public class ErroredEventArgs : EventArgs
+        {
+            public ErroredEventArgs(Exception e)
+            {
                 Exception = e;
             }
 
-            public Exception Exception {
+            public Exception Exception
+            {
                 get;
                 private set;
             }
         }
 
-        private class FallbackRequestResolver : IRequestResolver {
-            private IRequestResolver[] resolvers;
+        private class FallbackRequestResolver : IRequestResolver
+        {
+            private readonly IRequestResolver[] resolvers;
 
-            public FallbackRequestResolver(params IRequestResolver[] resolvers) {
-                this.resolvers = resolvers;
-            }
+            public FallbackRequestResolver(params IRequestResolver[] resolvers) => this.resolvers = resolvers;
 
-            public async Task<IResponse> Resolve(IRequest request) {
+            public async Task<IResponse> Resolve(IRequest request)
+            {
                 IResponse response = null;
 
-                foreach (IRequestResolver resolver in resolvers) {
+                foreach (var resolver in resolvers)
+                {
                     response = await resolver.Resolve(request);
-                    if (response.AnswerRecords.Count > 0) break;
+                    if (response.AnswerRecords.Count > 0)
+                        break;
                 }
 
                 return response;
