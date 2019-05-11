@@ -25,7 +25,7 @@
             }
         }
         private static string StringifyList(IEnumerable enumerable) 
-            => "[" + string.Join(", ", enumerable.Cast<object>().Select(StringifyObject).ToArray()) + "]";
+            => $"[{string.Join(", ", enumerable.Cast<object>().Select(StringifyObject).ToArray())}]";
         private static string StringifyDictionary(IEnumerable dict)
         {
             var result = new StringBuilder();
@@ -42,9 +42,7 @@
             }
 
             if (result.Length > 1)
-            {
                 result.Remove(result.Length - 2, 2);
-            }
 
             return result.Append("}").ToString();
         }
